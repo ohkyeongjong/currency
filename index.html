@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>환율 계산기</title>
+<meta name="theme-color" content="#0f7f70">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+/* Layout: one narrow column. Status line, six currency chips (pick the one you hold), amount card, then five converted rows. Rounded shapes throughout. */
+:root {
+  --bg: #e8eeed;
+  --panel: #f5f9f8;
+  --card: #ffffff;
+  --ink: #16201e;
+  --muted: #55645f;
+  --line: #c9d7d3;
+  --accent: #0f7f70;
+  --accent-ink: #ffffff;
+  --warn: #9a5700;
+  --font: system-ui, "Noto Sans KR", "Malgun Gothic", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1514;
+    --panel: #172120;
+    --card: #141c1b;
+    --ink: #e4efec;
+    --muted: #93a8a2;
+    --line: #2a3836;
+    --accent: #4fd1b9;
+    --accent-ink: #06201b;
+    --warn: #f2a93b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1514;
+  --panel: #172120;
+  --card: #141c1b;
+  --ink: #e4efec;
+  --muted: #93a8a2;
+  --line: #2a3836;
+  --accent: #4fd1b9;
+  --accent-ink: #06201b;
+  --warn: #f2a93b;
+  color-scheme: dark;
+}
+html { color-scheme: light; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; }
+button, input { font-family: inherit; color: inherit; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app {
+  box-sizing: border-box; max-width: 560px; margin: 0 auto; min-height: 100vh;
+  display: flex; flex-direction: column; gap: 12px;
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+h1 { margin: 0; font-size: 20px; font-weight: 700; }
+.status { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#status-text { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+#status-text.stale { color: var(--warn); font-weight: 700; }
+.round {
+  flex: none; width: 44px; height: 44px; border-radius: 50%; padding: 0;
+  display: grid; place-items: center; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line);
+}
+.round:active { background: var(--line); }
+.round svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.round.busy svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .round.busy svg { animation: none; opacity: .5; } }
+
+.label { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted); }
+.chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+.chip {
+  min-width: 0; height: 52px; padding: 0 8px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 26px; cursor: pointer;
+  font-size: 15px; font-weight: 700;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.coin {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--line); color: var(--ink); font-size: 15px; font-weight: 700; line-height: 1;
+}
+.chip[aria-pressed="true"] .coin { background: var(--accent-ink); color: var(--accent); }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 14px 16px; }
+.amount-row { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
+#amount {
+  flex: 1; min-width: 0; padding: 0; margin: 0; border: 0; outline: none; background: transparent;
+  font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+#amount:focus-visible { outline: none; }
+.card:focus-within { border-color: var(--accent); }
+#base-code { flex: none; font-size: 16px; font-weight: 700; color: var(--muted); }
+#preview { min-height: 18px; margin-top: 4px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+
+.results { display: flex; flex-direction: column; gap: 8px; }
+.res {
+  width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 20px; cursor: pointer;
+}
+.res:active { background: var(--panel); }
+.res .mid { flex: 1; min-width: 0; }
+.res .code { font-size: 15px; font-weight: 700; }
+.res .name { font-size: 12px; color: var(--muted); }
+.res .rate { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.res .out { flex: none; max-width: 52%; text-align: right; }
+.res .num { font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; line-height: 1.2; }
+.res .cur { font-size: 12px; color: var(--muted); }
+.empty { padding: 18px 16px; border: 1px dashed var(--line); border-radius: 20px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.note { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="head">
+    <h1>환율 계산기</h1>
+  </div>
+
+  <div class="status">
+    <div id="status-text" aria-live="polite">환율을 불러오는 중…</div>
+    <button class="round" id="refresh" type="button" aria-label="환율 새로 받기">
+      <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+    </button>
+  </div>
+
+  <div>
+    <div class="label">가진 돈의 통화</div>
+    <div class="chips" id="chips" role="group" aria-label="통화 선택"></div>
+  </div>
+
+  <div class="card">
+    <label class="label" for="amount">금액</label>
+    <div class="amount-row">
+      <input id="amount" type="text" inputmode="decimal" autocomplete="off" aria-describedby="preview" placeholder="0">
+      <span id="base-code"></span>
+    </div>
+    <div id="preview"></div>
+  </div>
+
+  <div>
+    <div class="label">환산 결과 (누르면 그 통화로 바꿔 계산)</div>
+    <div class="results" id="results" style="margin-top:6px"></div>
+  </div>
+
+  <p class="note">환율은 시장 기준 환율이며 하루 한 번 갱신되는 값입니다. 은행이나 환전소의 실제 환율은 수수료 때문에 다릅니다.</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var CUR = [
+    { code: 'USD', name: '미국 달러', sym: '$', dec: 2 },
+    { code: 'EUR', name: '유로', sym: '€', dec: 2 },
+    { code: 'JPY', name: '일본 엔', sym: '¥', dec: 0 },
+    { code: 'CNY', name: '중국 위안', sym: '元', dec: 2 },
+    { code: 'KRW', name: '한국 원', sym: '₩', dec: 0 },
+    { code: 'TRY', name: '터키 리라', sym: '₺', dec: 2 }
+  ];
+  var BY = {};
+  CUR.forEach(function (c) { BY[c.code] = c; });
+
+  var $ = function (id) { return document.getElementById(id); };
+  var amountEl = $('amount'), chipsEl = $('chips'), resEl = $('results'), previewEl = $('preview');
+  var statusEl = $('status-text'), refreshBtn = $('refresh');
+
+  var STATE_KEY = 'fx-state-v1', RATES_KEY = 'fx-rates-v1';
+  var state = { base: 'TRY', amount: '1000' };
+  var data = null;           /* { fetchedAt, sourceUpdatedAt, rates } */
+  var lastCheck = 0;
+  var note = '';             /* 마지막 새로고침 결과 안내 */
+
+  /* ---------- storage ---------- */
+  function readJSON(k) { try { var r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
+  function writeJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+  /* ---------- number helpers ---------- */
+  var fmtCache = {};
+  function nf(min, max) {
+    var k = min + '/' + max;
+    return fmtCache[k] || (fmtCache[k] = new Intl.NumberFormat('ko-KR', { minimumFractionDigits: min, maximumFractionDigits: max }));
+  }
+  function fmtAmount(v, code) {
+    var d = BY[code].dec;
+    if (v !== 0 && Math.abs(v) < 0.01) return nf(0, 6).format(v);
+    return nf(d, d).format(v);
+  }
+  function fmtRate(v) {
+    var d = v >= 100 ? 2 : v >= 1 ? 3 : v >= 0.01 ? 4 : 6;
+    return nf(0, d).format(v);
+  }
+  function plain(v, code) {
+    var d = BY[code].dec;
+    var n = Math.abs(v) < 0.01 ? +v.toPrecision(3) : +v.toFixed(d);
+    return String(n);
+  }
+  function parseAmount(s) {
+    s = String(s).replace(/[\s ']/g, '');
+    if (!s) return NaN;
+    var lc = s.lastIndexOf(','), ld = s.lastIndexOf('.');
+    if (lc >= 0 && ld >= 0) {
+      var dec = lc > ld ? ',' : '.', th = dec === ',' ? '.' : ',';
+      s = s.split(th).join('').replace(dec, '.');
+    } else if (lc >= 0) {
+      var parts = s.split(',');
+      if (parts.length === 2 && parts[1].length > 0 && parts[1].length <= 2) s = parts[0] + '.' + parts[1];
+      else s = parts.join('');
+    } else if (ld >= 0) {
+      var p = s.split('.');
+      if (p.length > 2) s = p.join('');
+    }
+    var n = parseFloat(s);
+    return isFinite(n) && n >= 0 ? n : NaN;
+  }
+
+  /* ---------- rates ---------- */
+  function valid(d) {
+    return !!(d && d.rates && CUR.every(function (c) { return typeof d.rates[c.code] === 'number' && d.rates[c.code] > 0; }));
+  }
+  function ageHours(d) { return d && d.fetchedAt ? (Date.now() / 1000 - d.fetchedAt) / 3600 : Infinity; }
+
+  function getJSON(url, ms) {
+    var ctl = new AbortController();
+    var t = setTimeout(function () { ctl.abort(); }, ms);
+    return fetch(url, { cache: 'no-store', signal: ctl.signal }).then(function (r) {
+      clearTimeout(t);
+      if (!r.ok) throw new Error('http ' + r.status);
+      var off = r.headers.get('X-Cache') === 'offline';
+      return r.json().then(function (j) { return { data: j, offline: off }; });
+    }, function (e) { clearTimeout(t); throw e; });
+  }
+  function pick(rates) {
+    var o = {};
+    CUR.forEach(function (c) { o[c.code] = rates[c.code]; });
+    return o;
+  }
+  function fromErApi() {
+    return getJSON('https://open.er-api.com/v6/latest/USD', 8000).then(function (res) {
+      var raw = res.data;
+      if (!raw || raw.result !== 'success') throw new Error('bad');
+      return { fetchedAt: Math.floor(Date.now() / 1000), sourceUpdatedAt: raw.time_last_update_unix, rates: pick(raw.rates) };
+    });
+  }
+  function fromFrankfurter() {
+    return getJSON('https://api.frankfurter.app/latest?from=USD&to=EUR,JPY,CNY,KRW,TRY', 8000).then(function (res) {
+      var raw = res.data;
+      var r = raw.rates || {}; r.USD = 1;
+      return { fetchedAt: Math.floor(Date.now() / 1000), sourceUpdatedAt: Math.floor(Date.parse(raw.date) / 1000), rates: pick(r) };
+    });
+  }
+
+  function refresh(manual) {
+    refreshBtn.classList.add('busy');
+    if (manual) { note = ''; setStatus('환율을 확인하는 중…'); }
+    var got = null, offline = false;
+    /* 1) 내 사이트의 rates.json (GitHub가 하루 두 번 갱신) */
+    return getJSON('rates.json?t=' + Date.now(), 8000).then(
+      function (r) { if (valid(r.data)) got = r.data; offline = r.offline; },
+      function (e) { offline = !(e && /^http/.test(e.message)); })
+      /* 2) 너무 오래됐거나 없으면 환율 제공처에서 직접 (인터넷이 될 때만) */
+      .then(function () {
+        if (offline || (got && ageHours(got) <= 30)) return;
+        return fromErApi().then(function (d) { if (valid(d)) got = d; }, function () {})
+          .then(function () { if (!got || ageHours(got) > 30) return fromFrankfurter().then(function (d) { if (valid(d)) got = d; }, function () {}); });
+      })
+      .then(function () {
+        lastCheck = Date.now();
+        var hadData = !!data;
+        var newer = got && (!data || got.fetchedAt > data.fetchedAt);
+        if (got && (!data || (!offline && got.fetchedAt >= data.fetchedAt))) {
+          data = got; writeJSON(RATES_KEY, data);
+        }
+        if (offline) note = hadData || valid(data) ? '인터넷에 연결되지 않아 저장된 환율을 쓰고 있습니다.' : '';
+        else if (!got) note = valid(data) ? '환율을 새로 받지 못해 저장된 환율을 쓰고 있습니다.' : '';
+        else if (newer) note = manual ? '최신 환율로 업데이트했습니다.' : '';
+        else note = manual ? '이미 최신 환율입니다.' : '';
+      })
+      .then(function () { refreshBtn.classList.remove('busy'); render(); });
+  }
+
+  /* ---------- rendering ---------- */
+  var dateFmt = null;
+  function fmtDate(sec) {
+    if (!dateFmt) dateFmt = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+    return dateFmt.format(new Date(sec * 1000));
+  }
+  function setStatus(text, stale) {
+    statusEl.textContent = text;
+    statusEl.classList.toggle('stale', !!stale);
+  }
+  function renderStatus() {
+    if (!valid(data)) {
+      setStatus('저장된 환율이 없습니다. 인터넷에 연결한 뒤 오른쪽 새로고침 버튼을 눌러 주세요.', true);
+      return;
+    }
+    var stale = ageHours(data) > 36;
+    var t = '마지막 업데이트 ' + fmtDate(data.fetchedAt);
+    if (stale) t += ' (오래된 환율입니다)';
+    if (note) t += ' · ' + note;
+    setStatus(t, stale);
+  }
+
+  function buildChips() {
+    CUR.forEach(function (c) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.setAttribute('data-code', c.code);
+      var coin = document.createElement('span'); coin.className = 'coin'; coin.textContent = c.sym;
+      var t = document.createElement('span'); t.textContent = c.code;
+      b.appendChild(coin); b.appendChild(t);
+      b.setAttribute('aria-label', c.name);
+      b.addEventListener('click', function () { state.base = c.code; writeJSON(STATE_KEY, state); render(); });
+      chipsEl.appendChild(b);
+    });
+  }
+
+  function renderResults() {
+    resEl.textContent = '';
+    if (!valid(data)) {
+      var e = document.createElement('div');
+      e.className = 'empty';
+      e.textContent = '환율 정보가 아직 없어 계산할 수 없습니다. 인터넷에 한 번 연결하면 이후에는 오프라인에서도 계산됩니다.';
+      resEl.appendChild(e);
+      return;
+    }
+    var a = parseAmount(state.amount);
+    var rb = data.rates[state.base];
+    CUR.forEach(function (c) {
+      if (c.code === state.base) return;
+      var unit = data.rates[c.code] / rb;
+      var v = isNaN(a) ? NaN : a * unit;
+
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'res';
+      var coin = document.createElement('span'); coin.className = 'coin'; coin.textContent = c.sym;
+      var mid = document.createElement('span'); mid.className = 'mid';
+      var code = document.createElement('div'); code.className = 'code'; code.textContent = c.code;
+      var name = document.createElement('div'); name.className = 'name'; name.textContent = c.name;
+      var rate = document.createElement('div'); rate.className = 'rate'; rate.textContent = '1 ' + state.base + ' = ' + fmtRate(unit) + ' ' + c.code;
+      mid.appendChild(code); mid.appendChild(name); mid.appendChild(rate);
+      var out = document.createElement('span'); out.className = 'out';
+      var num = document.createElement('div'); num.className = 'num'; num.textContent = isNaN(v) ? '—' : fmtAmount(v, c.code);
+      var cur = document.createElement('div'); cur.className = 'cur'; cur.textContent = c.code;
+      out.appendChild(num); out.appendChild(cur);
+      b.appendChild(coin); b.appendChild(mid); b.appendChild(out);
+      b.setAttribute('aria-label', c.name + ' ' + num.textContent + ' (누르면 이 통화로 바꿔 계산)');
+      b.addEventListener('click', function () {
+        if (isNaN(v)) { state.base = c.code; }
+        else { state.base = c.code; state.amount = plain(v, c.code); }
+        writeJSON(STATE_KEY, state);
+        render();
+      });
+      resEl.appendChild(b);
+    });
+  }
+
+  function renderInput() {
+    [].forEach.call(chipsEl.children, function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-code') === state.base ? 'true' : 'false');
+    });
+    $('base-code').textContent = state.base;
+    if (amountEl.value !== state.amount) amountEl.value = state.amount;
+    var a = parseAmount(state.amount);
+    previewEl.textContent = isNaN(a) ? '' : fmtAmount(a, state.base) + ' ' + BY[state.base].name;
+  }
+
+  function render() { renderStatus(); renderInput(); renderResults(); }
+
+  /* ---------- events ---------- */
+  amountEl.addEventListener('input', function () {
+    var v = amountEl.value.replace(/[^\d.,]/g, '').slice(0, 16);
+    if (v !== amountEl.value) amountEl.value = v;
+    state.amount = v;
+    writeJSON(STATE_KEY, state);
+    renderInput();
+    renderResults();
+  });
+  amountEl.addEventListener('focus', function () { try { amountEl.select(); } catch (e) {} });
+  refreshBtn.addEventListener('click', function () { refresh(true); });
+  window.addEventListener('online', function () { refresh(false); });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && Date.now() - lastCheck > 10 * 60 * 1000) refresh(false);
+  });
+
+  /* ---------- start ---------- */
+  var s = readJSON(STATE_KEY);
+  if (s && BY[s.base] && typeof s.amount === 'string') state = s;
+  var saved = readJSON(RATES_KEY);
+  if (valid(saved)) data = saved;
+  buildChips();
+  render();
+  refresh(false);
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
