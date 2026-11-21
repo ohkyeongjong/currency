@@ -1,7 +1,7 @@
 {
  "base": "USD",
  "source": "from_er_api",
- "fetchedAt": 1795241768,
+ "fetchedAt": 1795283987,
  "sourceUpdatedAt": 1795132952,
  "rates": {
   "USD": 1,
