@@ -1,14 +1,14 @@
 {
  "base": "USD",
  "source": "from_er_api",
- "fetchedAt": 1795457722,
- "sourceUpdatedAt": 1795392152,
+ "fetchedAt": 1795501112,
+ "sourceUpdatedAt": 1795478551,
  "rates": {
   "USD": 1,
-  "EUR": 0.911134,
-  "JPY": 158.701406,
-  "CNY": 6.681345,
-  "KRW": 1343.597019,
-  "TRY": 50.583634
+  "EUR": 0.915641,
+  "JPY": 159.06171,
+  "CNY": 6.679299,
+  "KRW": 1343.513843,
+  "TRY": 50.621508
  }
 }
